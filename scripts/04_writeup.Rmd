@@ -1,0 +1,114 @@
+---
+title: "Scraping Restaurant Health Inspections"
+author: "Rob Coleman"
+date: "December 3, 2017"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(knitr)
+library(hrbrthemes)
+knitr::opts_chunk$set(echo = TRUE)
+rawdata <- readRDS("~/projects/resto scrape/data/tidy.RDS")
+rawdata$city <- as.factor(rawdata$city)
+rawdata$city[rawdata$city == "Sault Ste Marie"] <- "Sault Ste. Marie"
+library(extrafont)
+extrafont::loadfonts(device="win")
+
+import_roboto_condensed()
+```
+
+[Algoma Public Health](http://www.algomapublichealth.com/) is the public health agency in my area that inspects restaurants to ensure they are abiding by all the relevant food safety legislation.  They are also nice enough to publish their [restaurant health inspection reports](http://www.algomapublichealth.com/inspections-environment/food-safety/restaurant-inspection-reports/) online for anyone to review.  
+
+I searched for a few restaurants that I frequent (phew  [Fratellis](https://goo.gl/maps/rqj5goqwqeT2) is safe!) but then I wanted to know **which restaurants had the most health infractions?**
+
+Their website isn't setup to answer that kind of question. Each inspection report is published as a unique page on their website which makes aggregating and comparing difficult.
+
+I used `rvest` to scrape the URLs of all the reports APH published.  Then I scraped the contents of the reports so that I could create a dataset that would allow me to aggregate and compare the results (the dataset and code available here.)
+
+## Restaurants with the most infractions
+
+Of the 90% of restaurants who received three visits, here are the top 5 in terms of total number of infractions:
+
+```{r warning=FALSE, echo=FALSE}
+rawdata %>% 
+  filter(city == "Sault Ste. Marie") %>% 
+  group_by(name, street) %>% 
+  summarise(visits = n_distinct(visit),
+            infractions = sum(infractions!="No infractions found at the time of inspection"),
+            infraction_score = round(infractions / visits, 2)) %>% 
+  filter(visits > 1) %>% 
+  arrange(desc(infraction_score)) %>% 
+  head(5) %>% 
+  ggplot(aes(x=reorder(name, infractions), infractions)) +
+  geom_col(fill="#91AAB4", alpha=0.9) +
+  coord_flip() +
+  labs(title = "Top 5 Restaurants by # of Infractions",
+       x = NULL,
+       y = "# of health infractions",
+       subtitle = "",
+       caption = "Source: Algoma Public Health Inspection Reports \n http://www.algomapublichealth.com/inspections-environment/food-safety/restaurant-inspection-reports/") +
+  theme_ipsum_rc(base_family="Roboto", grid = "X") +
+  theme(plot.margin=unit(rep(30, 4), "pt")) +
+  theme(plot.title=element_text(face="bold")) +
+  theme(plot.subtitle=element_text(margin=margin(b=10))) +
+  theme(plot.caption=element_text(size=8, margin=margin(t=10)))
+```
+
+Surprising results.  Upper Deck has some [particularly bad](http://www.algomapublichealth.com/inspections-environment/food-safety/restaurant-inspection-reports/?id=7e880c25-6cd5-4e01-bcf4-7ad707ae166f) health infractions.
+
+But that got me thinking--not all infractions are equal.  Some are minor and are corrected onsite.  Some are more serious and others still are downright strange. Let's take a closer look.
+
+## Number of infractions
+
+Here are the top 10 infractions by frequency, meaning these infractions appear most often in the dataset.
+
+```{r warning=FALSE, echo=FALSE, fig.width=8, fig.height=8}
+
+
+rawdata %>% 
+  filter(city == "Sault Ste. Marie") %>% 
+  filter(infractions !="No infractions found at the time of inspection") %>% 
+  count(infractions) %>% 
+  arrange(desc(n)) %>% 
+  head(10) %>% 
+  ggplot(aes(reorder(infractions, n), n)) +
+  geom_col(fill="#91AAB4", alpha=0.9) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 45)) +
+  coord_flip() +
+  labs(title = "Top 10 Infractions by Frequency",
+       x = NULL,
+       y = "# of health infractions",
+       subtitle = "",
+       caption = "Source: Algoma Public Health Inspection Reports \n http://www.algomapublichealth.com/inspections-environment/food-safety/restaurant-inspection-reports/") +
+  theme_ipsum_rc(base_family="Roboto", grid = "X") +
+  theme(plot.margin=unit(rep(30, 4), "pt")) +
+  theme(plot.title=element_text(face="bold")) +
+  theme(plot.subtitle=element_text(margin=margin(b=10))) +
+  theme(plot.caption=element_text(size=10, margin=margin(t=10)))
+```
+
+## Stranger Infractions
+
+The infractions that don't appear frequently are also quite interesting.  Here are infractions that only appear once in the dataset, but leave me with more questions than answers.
+
+```{r warning=FALSE, echo=FALSE}
+strange_things <- c('eggs', 'sleeping', 'hunting', 'live animal', 'hygiene')
+rawdata %>% 
+  filter(city == "Sault Ste. Marie") %>% 
+  filter(str_detect(infractions, paste(strange_things, collapse = '|'))) %>% 
+  select(Restaurant = name, Address = street, Date = visit, Infraction = infractions, -city) %>% 
+  kable()
+```
+
+Questions that come to mind:
+
+* who's sleeping in the Pavilion?
+* did the Teen Challenge involve catching your meal?
+* what kind of animals are hanging out in Queen West Variety?
+* how does one tell the grade of eggs?  Can you do it just by looking?
+
+What does this data tell us?  Not too much really :)
+
+I hope you enjoyed this peek behind the health inspection curtain.  The dataset and code are available here.  If you have any questions or comments, please feel free to get in touch.
